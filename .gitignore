@@ -1,0 +1,13 @@
+node_modules
+.next
+.data
+.env
+.env.local
+.env*.local
+*.tsbuildinfo
+next-env.d.ts
+
+# presentation build artefacts (source links to a local skill folder)
+presentation/shots
+presentation/shot.mjs
+presentation/deck.src.html

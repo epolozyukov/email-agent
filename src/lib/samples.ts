@@ -1,0 +1,7 @@
+import type { EmailInput } from "./types";
+const TO = "compliance.desk@business.com";
+export const SAMPLES: { label: string; email: EmailInput }[] = [
+  { label: "1 · GDPR / Data Privacy", email: { from: "john.smith@business.com", to: TO, subject: "Request for customer data disclosure", body: "Hi Team,\n\nWe have received a request from an external partner asking us to provide customer information related to a recent business transaction. They need the information by Friday.\n\nCould you please advise whether we can share this data and what approvals are required?\n\nBest regards,\nJohn" } },
+  { label: "2 · Regulatory Inquiry", email: { from: "sarah.jones@business.com", to: TO, subject: "Urgent regulatory information request", body: "We have received a request from a regulatory authority asking for documentation related to our internal operational controls.\n\nThe response deadline is in five working days. Could you please advise which documents we should provide and who needs to review the response?" } },
+  { label: "3 · Contract Review", email: { from: "michael.brown@business.com", to: TO, subject: "Urgent review of supplier agreement", body: "We are preparing to sign a new supplier agreement. The supplier has introduced several changes to the liability and data processing clauses.\n\nCould Legal review the agreement and confirm whether the proposed changes are acceptable before we proceed?" } },
+];
