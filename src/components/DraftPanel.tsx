@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CaseRecord, DraftVersion } from "@/lib/types";
 import { AiBadge, DemoBadge, Section } from "./ui";
 
@@ -9,17 +9,21 @@ export default function DraftPanel({ c, onChange }: { c: CaseRecord; onChange: (
   const [dirty, setDirty] = useState(false); const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [showHist, setShowHist] = useState(false);
+  const latest = useRef(c); latest.current = c;
   const approved = !!c.approval;
   const canEdit = !approved && ["Analysed", "Awaiting Information"].includes(c.status);
 
   useEffect(() => { if (last) { setTo(last.to); setSubject(last.subject); setBody(last.body); setDirty(false); } }, [last?.version, c.id]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!last) return <Section title="Draft Email"><p className="text-slate-400">Draft will appear when analysis completes.</p></Section>;
 
+  // The full case travels with every request: serverless instances do not share memory (see getCase on the server).
   async function api(path: string, payload?: unknown) {
-    const res = await fetch(`/api/cases/${c.id}/${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: payload ? JSON.stringify(payload) : undefined });
-    const j = await res.json(); if (!res.ok) throw new Error(j.error ?? "Request failed"); return j;
+    const res = await fetch(`/api/cases/${c.id}/${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...(payload as object), snapshot: latest.current }) });
+    const j = await res.json(); if (!res.ok) throw new Error(j.error ?? "Request failed");
+    if (j.case) { latest.current = j.case; onChange(j.case); }
+    return j;
   }
-  async function refresh() { const r = await fetch(`/api/cases/${c.id}`); onChange(await r.json()); }
+  async function refresh() { /* api() already applies the returned case */ }
   const run = (name: string, fn: () => Promise<void>) => async () => { setBusy(name); setMsg(null); try { await fn(); } catch (e) { setMsg({ kind: "err", text: (e as Error).message }); } finally { setBusy(null); } };
 
   const regenerate = run("regen", async () => {

@@ -26,7 +26,13 @@ class JsonCaseRepository implements CaseRepository {
   get(id: string) { return this.load().get(id); }
   save(c: CaseRecord) { c.updatedAt = new Date().toISOString(); this.load().set(c.id, c); this.flush(); }
   clear() { this.cache = new Map(); this.flush(); }
-  nextId() { return `CASE-${new Date().getFullYear()}-${String(this.load().size + 1).padStart(4, "0")}`; }
+  // Random suffix: serverless instances do not share a counter, so sequential IDs would collide.
+  nextId() {
+    for (;;) {
+      const id = `CASE-${new Date().getFullYear()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+      if (!this.load().has(id)) return id;
+    }
+  }
 }
 const g = globalThis as unknown as { __repo?: CaseRepository };
 export const repo: CaseRepository = (g.__repo ??= new JsonCaseRepository());

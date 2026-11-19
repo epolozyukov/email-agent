@@ -11,6 +11,9 @@ import Architecture from "./Architecture";
 import { Badge, DemoBadge } from "./ui";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+const LS = "eei.cases";
+function loadLocal(): CaseRecord[] { try { return JSON.parse(localStorage.getItem(LS) ?? "[]"); } catch { return []; } }
+
 export default function App() {
   const [status, setStatus] = useState<any>(null);
   const [c, setC] = useState<CaseRecord | null>(null);
@@ -23,10 +26,16 @@ export default function App() {
 
   useEffect(() => { fetch("/api/status").then((r) => r.json()).then(setStatus).catch(() => setStatus(null)); }, []);
 
+  // Keep a copy of finished cases in this browser so history survives servers that forget cases (e.g. serverless).
+  useEffect(() => {
+    if (!c?.id || running || ["New", "Analysing"].includes(c.status)) return;
+    try { const rest = loadLocal().filter((x) => x.id !== c.id); localStorage.setItem(LS, JSON.stringify([c, ...rest].slice(0, 20))); } catch { /* storage full or blocked */ }
+  }, [c, running]);
+
   const stream = useCallback(async (url: string, init: RequestInit, base: CaseRecord | null) => {
     setError(null); setRunning(true);
     const ac = new AbortController(); abort.current = ac;
-    let caseId = base?.id ?? "";
+    let caseId = base?.id ?? ""; let doneCase: CaseRecord | null = null;
     try {
       const res = await fetch(url, { ...init, signal: ac.signal });
       if (!res.ok || !res.body) { const j = await res.json().catch(() => ({})); throw new Error(j.error ?? `Request failed (${res.status})`); }
@@ -40,6 +49,7 @@ export default function App() {
           if (!chunk.startsWith("data: ")) continue;
           const msg = JSON.parse(chunk.slice(6));
           if (msg.type === "case") { caseId = msg.caseId; }
+          if (msg.type === "done" && msg.case) doneCase = msg.case;
           if (msg.type === "event") {
             const ev: StepEvent = msg.event;
             setC((prev) => {
@@ -54,7 +64,8 @@ export default function App() {
       if ((e as Error).name !== "AbortError") setError((e as Error).message);
     } finally {
       setRunning(false); abort.current = null;
-      if (caseId) { try { const r = await fetch(`/api/cases/${caseId}`); if (r.ok) setC(await r.json()); } catch { /* ignore */ } }
+      if (doneCase) setC(doneCase);
+      else if (caseId) { try { const r = await fetch(`/api/cases/${caseId}`); if (r.ok) setC(await r.json()); } catch { /* ignore */ } }
     }
   }, []);
 
@@ -62,10 +73,10 @@ export default function App() {
     setC({ id: "", status: "New", mode: status?.llm?.mode ?? "demo", events: [], results: {}, drafts: [], email: { ...email, receivedAt: new Date().toISOString() } } as unknown as CaseRecord);
     return stream("/api/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(email) }, null);
   };
-  const retry = () => c && stream(`/api/cases/${c.id}/retry`, { method: "POST" }, { ...c, events: [], results: {}, drafts: [] });
+  const retry = () => c && stream(`/api/cases/${c.id}/retry`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ snapshot: c }) }, { ...c, events: [], results: {}, drafts: [] });
   const cancel = () => { abort.current?.abort(); };
   const reset = () => { setTab("analysis"); abort.current?.abort(); setC(null); setError(null); setFormReset((n) => n + 1); };
-  const open = async (id: string) => { setShowHistory(false); setTab("analysis"); const r = await fetch(`/api/cases/${id}`); if (r.ok) { setC(await r.json()); setError(null); } };
+  const open = async (id: string) => { setShowHistory(false); setTab("analysis"); const r = await fetch(`/api/cases/${id}`); if (r.ok) { setC(await r.json()); setError(null); return; } const local = loadLocal().find((x) => x.id === id); if (local) { setC(local); setError(null); } else setError("Case not found on the server or in this browser."); };
 
   const live = status?.llm?.configured ?? false;
   const demo = c ? c.mode === "demo" : !live;
