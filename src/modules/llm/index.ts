@@ -10,16 +10,21 @@ export interface LLMResult<T> { data: T; provider: ProviderInfo; notes: string[]
 
 interface ProviderConfig { name: "groq" | "openrouter" | "xai"; apiKey: string; baseUrl: string; model: string }
 
+/** Reads an env var tolerant of pasted quotes, trailing whitespace/newlines and inline "# comments". */
+export function env(name: string): string {
+  return (process.env[name] ?? "").split(/\s+#/)[0].trim().replace(/^["']|["']$/g, "").trim();
+}
+
 function cfg(name: string): ProviderConfig | null {
-  const E = process.env;
+  const E = new Proxy({} as Record<string, string>, { get: (_t, k: string) => env(k) });
   if (name === "groq") return E.GROQ_API_KEY ? { name, apiKey: E.GROQ_API_KEY, baseUrl: E.GROQ_BASE_URL || "https://api.groq.com/openai/v1", model: E.GROQ_MODEL || "llama-3.3-70b-versatile" } : null;
   if (name === "openrouter") return E.OPENROUTER_API_KEY ? { name, apiKey: E.OPENROUTER_API_KEY, baseUrl: E.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1", model: E.OPENROUTER_MODEL || "openrouter/free" } : null;
   if (name === "xai") return E.XAI_API_KEY && E.XAI_MODEL ? { name, apiKey: E.XAI_API_KEY, baseUrl: E.XAI_BASE_URL || "https://api.x.ai/v1", model: E.XAI_MODEL } : null;
   return null;
 }
 export function llmConfig() {
-  const primary = cfg(process.env.LLM_PROVIDER || "groq");
-  const fallback = process.env.LLM_FALLBACK_PROVIDER ? cfg(process.env.LLM_FALLBACK_PROVIDER) : null;
+  const primary = cfg((env("LLM_PROVIDER") || "groq").toLowerCase());
+  const fallback = env("LLM_FALLBACK_PROVIDER") ? cfg(env("LLM_FALLBACK_PROVIDER").toLowerCase()) : null;
   return { primary, fallback, mode: (primary ? "live" : "demo") as "live" | "demo" };
 }
 export function providerInfo(): ProviderInfo {
@@ -32,7 +37,7 @@ class ProviderError extends Error { constructor(msg: string, public status?: num
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function callOnce(p: ProviderConfig, messages: { role: string; content: string }[]): Promise<string> {
-  const timeout = Number(process.env.LLM_TIMEOUT_MS) || 30000;
+  const timeout = Number(env("LLM_TIMEOUT_MS")) || 30000;
   const body: Record<string, unknown> = { model: p.model, messages, temperature: 0.2, max_tokens: 2000 };
   if (p.name !== "openrouter") body.response_format = { type: "json_object" };
   // gpt-oss models spend tokens on hidden reasoning; keep it low to save free-tier tokens and latency.
